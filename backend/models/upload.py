@@ -10,3 +10,4 @@ class UploadResponse(BaseModel):
     filename: str
     chunks_indexed: int = Field(..., ge=0)
     bytes_processed: int = Field(..., ge=0)
+    entities_indexed: int = 0

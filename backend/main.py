@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from backend.config import get_settings
 from backend.routers import chat, evaluate, upload
 from backend.services import document_parser, embedder
+from backend.services.graph_store import get_graph_store
 from backend.services.vector_store import VectorStore
 
 logging.basicConfig(
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI):
     embedder.warmup()
     document_parser.log_ocr_status_at_startup()
     VectorStore.get()
+    await get_graph_store()
     logger.info(
         "Ready. index=%s dim=%d cors=%s",
         cfg.PINECONE_INDEX_NAME,

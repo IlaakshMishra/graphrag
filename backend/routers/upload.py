@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 
@@ -9,6 +10,8 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from backend.models.upload import UploadResponse
 from backend.services import document_parser
+from backend.services.entity_extractor import extract_entities_from_chunk
+from backend.services.graph_store import get_graph_store
 from backend.services.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
@@ -68,9 +71,39 @@ async def upload_document(file: UploadFile = File(...)) -> UploadResponse:
         logger.exception("upsert failure for ns=%s", namespace)
         raise HTTPException(status_code=500, detail=f"vector store error: {exc}") from exc
 
+    extraction_results = await asyncio.gather(
+        *[extract_entities_from_chunk(doc.page_content) for doc in chunks],
+        return_exceptions=True,
+    )
+
+    all_entities: list[dict] = []
+    all_relations: list[dict] = []
+    for result in extraction_results:
+        if isinstance(result, dict):
+            all_entities.extend(result.get("entities", []))
+            all_relations.extend(result.get("relationships", []))
+
+    seen_names: set[str] = set()
+    unique_entities: list[dict] = []
+    for e in all_entities:
+        if e.get("name") and e["name"] not in seen_names:
+            seen_names.add(e["name"])
+            unique_entities.append(e)
+
+    entities_indexed = 0
+    if unique_entities:
+        try:
+            graph_store = await get_graph_store()
+            entities_indexed = await asyncio.to_thread(
+                graph_store.upsert_entities, unique_entities, all_relations, namespace
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("graph store upsert failed for ns=%s: %s", namespace, exc)
+
     return UploadResponse(
         namespace=namespace,
         filename=file.filename,
         chunks_indexed=indexed,
         bytes_processed=len(raw),
+        entities_indexed=entities_indexed,
     )
