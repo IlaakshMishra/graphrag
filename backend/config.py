@@ -65,6 +65,15 @@ class Settings(BaseSettings):
         description="If grader keeps zero chunks, inject this many highest-ranked retrieved chunks",
     )
 
+    # Neo4j
+    NEO4J_URI: str = Field("bolt://localhost:7687")
+    NEO4J_USER: str = Field("neo4j")
+    NEO4J_PASSWORD: str = Field("password123")
+
+    # Graph retrieval
+    GRAPH_RETRIEVAL_HOPS: int = Field(2)
+    GRAPH_MAX_ENTITIES: int = Field(10)
+
     # OCR (Tesseract). GUI/Cursor often lacks Homebrew PATH — set TESSERACT_CMD explicitly.
     DOCUMENT_OCR_ENABLED: bool = Field(
         True,
