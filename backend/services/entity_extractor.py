@@ -3,7 +3,7 @@
 import json
 import logging
 from openai import AsyncOpenAI
-from config import get_settings
+from backend.config import get_settings
 
 logger = logging.getLogger(__name__)
 

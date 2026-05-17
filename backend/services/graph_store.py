@@ -8,7 +8,7 @@ _lock = asyncio.Lock()
 class GraphStore:
     def __init__(self, settings=None):
         if settings is None:
-            from config import get_settings
+            from backend.config import get_settings
             settings = get_settings()
         self._driver = GraphDatabase.driver(
             settings.NEO4J_URI,
@@ -72,6 +72,6 @@ async def get_graph_store() -> "GraphStore":
     async with _lock:
         if _instance is None:
             # Import here to avoid loading heavy config at module import time.
-            from config import get_settings
+            from backend.config import get_settings
             _instance = GraphStore(settings=get_settings())
     return _instance

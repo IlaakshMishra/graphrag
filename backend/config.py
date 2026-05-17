@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     NEO4J_PASSWORD: str = Field("password123")
 
     # Graph retrieval
-    GRAPH_RETRIEVAL_HOPS: int = Field(2)
+    GRAPH_RETRIEVAL_HOPS: int = Field(default=2, ge=1, le=5)
     GRAPH_MAX_ENTITIES: int = Field(10)
 
     # OCR (Tesseract). GUI/Cursor often lacks Homebrew PATH — set TESSERACT_CMD explicitly.

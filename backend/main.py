@@ -33,7 +33,11 @@ async def lifespan(app: FastAPI):
     embedder.warmup()
     document_parser.log_ocr_status_at_startup()
     VectorStore.get()
-    await get_graph_store()
+    try:
+        await get_graph_store()
+        logger.info("Graph store initialized")
+    except Exception as exc:
+        logger.warning("Graph store unavailable at startup (will retry on first use): %s", exc)
     logger.info(
         "Ready. index=%s dim=%d cors=%s",
         cfg.PINECONE_INDEX_NAME,
