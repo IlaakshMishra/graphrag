@@ -55,6 +55,9 @@ export function DocumentList({ docs, currentNamespace, onSelect }: Props) {
                   </div>
                   <div className="mt-0.5 flex items-center gap-2 text-zinc-500">
                     <span>{d.chunks_indexed} chunks</span>
+                    {d.entities_indexed > 0 && (
+                      <span className="text-xs text-violet-400">{d.entities_indexed} entities</span>
+                    )}
                     <span>·</span>
                     <span>{formatBytes(d.bytes_processed)}</span>
                   </div>

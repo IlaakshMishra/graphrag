@@ -22,6 +22,7 @@ export interface UploadedDoc {
   namespace: string;
   chunks_indexed: number;
   bytes_processed: number;
+  entities_indexed: number;
   uploaded_at: number;
 }
 
@@ -45,6 +46,7 @@ export interface UploadApiResponse {
   filename: string;
   chunks_indexed: number;
   bytes_processed: number;
+  entities_indexed: number;
 }
 
 export interface EvaluateApiRequest {

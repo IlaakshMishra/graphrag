@@ -20,6 +20,7 @@ export function useUpload() {
         namespace: res.namespace,
         chunks_indexed: res.chunks_indexed,
         bytes_processed: res.bytes_processed,
+        entities_indexed: res.entities_indexed,
         uploaded_at: Date.now(),
       };
       setUploadedDocs((prev) => [doc, ...prev]);
