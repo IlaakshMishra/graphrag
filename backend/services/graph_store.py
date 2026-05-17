@@ -1,5 +1,4 @@
 import asyncio
-import os
 from neo4j import GraphDatabase
 
 _instance = None
@@ -7,21 +6,13 @@ _lock = asyncio.Lock()
 
 
 class GraphStore:
-    def __init__(
-        self,
-        uri: str | None = None,
-        user: str | None = None,
-        password: str | None = None,
-    ):
-        # Accept explicit args first; fall back to env vars; then defaults that
-        # match the docker-compose values so tests work without a full .env.
-        neo4j_uri = uri or os.environ.get("NEO4J_URI", "bolt://localhost:7687")
-        neo4j_user = user or os.environ.get("NEO4J_USER", "neo4j")
-        neo4j_password = password or os.environ.get("NEO4J_PASSWORD", "password123")
-
+    def __init__(self, settings=None):
+        if settings is None:
+            from config import get_settings
+            settings = get_settings()
         self._driver = GraphDatabase.driver(
-            neo4j_uri,
-            auth=(neo4j_user, neo4j_password),
+            settings.NEO4J_URI,
+            auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD),
         )
 
     def upsert_entities(
@@ -54,7 +45,7 @@ class GraphStore:
     ) -> list[dict]:
         cypher = (
             "MATCH (e:Entity) WHERE e.name IN $names AND e.namespace = $ns "
-            "OPTIONAL MATCH (e)-[:RELATES_TO*1..2]-(related:Entity {namespace: $ns}) "
+            f"OPTIONAL MATCH (e)-[:RELATES_TO*1..{hops}]-(related:Entity {{namespace: $ns}}) "
             "WITH collect(distinct e) + collect(distinct related) AS all_e "
             "UNWIND all_e AS entity "
             "RETURN distinct entity.name AS name, entity.type AS type, "
@@ -82,10 +73,5 @@ async def get_graph_store() -> "GraphStore":
         if _instance is None:
             # Import here to avoid loading heavy config at module import time.
             from config import get_settings
-            settings = get_settings()
-            _instance = GraphStore(
-                uri=settings.NEO4J_URI,
-                user=settings.NEO4J_USER,
-                password=settings.NEO4J_PASSWORD,
-            )
+            _instance = GraphStore(settings=get_settings())
     return _instance

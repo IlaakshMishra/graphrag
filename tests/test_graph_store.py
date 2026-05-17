@@ -1,3 +1,7 @@
+import os
+os.environ.setdefault("OPENAI_API_KEY", "test-key-for-neo4j-tests")
+os.environ.setdefault("PINECONE_API_KEY", "test-key-for-neo4j-tests")
+
 import asyncio
 import pytest
 import sys
