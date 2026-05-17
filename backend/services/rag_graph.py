@@ -2,7 +2,7 @@
 
 Graph topology:
 
-    START → retrieve → grade_documents → generate → END
+    START → retrieve → graph_retrieve → grade_documents → generate → END
 
 State carries the question, rolling chat history (last N turns),
 retrieved chunks, and the final answer + citations. We use LangGraph
@@ -13,6 +13,7 @@ rather than naive chains so the same graph can later host branches
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any, Dict, List, TypedDict
 
@@ -20,6 +21,7 @@ from langgraph.graph import END, START, StateGraph
 from openai import AsyncOpenAI
 
 from backend.config import get_settings
+from backend.services.graph_store import get_graph_store
 from backend.services.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,7 @@ class RAGState(TypedDict, total=False):
     chat_history: List[Dict[str, str]]
     retrieved_docs: List[Dict[str, Any]]
     relevant_docs: List[Dict[str, Any]]
+    graph_context: list  # entities from Neo4j knowledge graph
     answer: str
     sources: List[Dict[str, Any]]
     session_id: str
@@ -97,6 +100,50 @@ async def _retrieve_node(state: RAGState) -> RAGState:
     return {"retrieved_docs": docs}
 
 
+async def _graph_retrieve_node(state: RAGState) -> RAGState:
+    cfg = get_settings()
+    client = _openai_client()
+
+    entity_names: list[str] = []
+    try:
+        resp = await client.chat.completions.create(
+            model=cfg.OPENAI_GRADER_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Extract 3-5 key entity names from the question. "
+                        'Return JSON: {"entities": ["name1", "name2"]}'
+                    ),
+                },
+                {"role": "user", "content": state["question"]},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0,
+        )
+        data = json.loads(resp.choices[0].message.content)
+        entity_names = data.get("entities", [])
+    except Exception:  # noqa: BLE001
+        entity_names = []
+
+    graph_context: list[dict] = []
+    if entity_names and state.get("namespace"):
+        try:
+            graph_store = await get_graph_store()
+            graph_context = await asyncio.to_thread(
+                graph_store.query_related,
+                entity_names,
+                state["namespace"],
+                cfg.GRAPH_RETRIEVAL_HOPS,
+            )
+            graph_context = graph_context[: cfg.GRAPH_MAX_ENTITIES]
+        except Exception:  # noqa: BLE001
+            graph_context = []
+
+    logger.info("graph_retrieve found %d entities", len(graph_context))
+    return {"graph_context": graph_context}
+
+
 async def _grade_one(
     client: AsyncOpenAI, model: str, question: str, doc: Dict[str, Any]
 ) -> bool:
@@ -160,6 +207,18 @@ async def _generate_node(state: RAGState) -> RAGState:
         }
 
     context = _format_context(docs)
+
+    graph_context = state.get("graph_context", [])
+    if graph_context:
+        graph_lines = [
+            f"- {e['name']} ({e.get('type', 'Unknown')}): {e.get('description', '')}"
+            for e in graph_context
+            if e.get("name")
+        ]
+        if graph_lines:
+            context += "\n\nKNOWLEDGE GRAPH CONTEXT (entities related to this query):\n"
+            context += "\n".join(graph_lines)
+
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": _GENERATE_SYSTEM},
         {
@@ -202,10 +261,12 @@ async def _generate_node(state: RAGState) -> RAGState:
 def _build_graph():
     graph = StateGraph(RAGState)
     graph.add_node("retrieve", _retrieve_node)
+    graph.add_node("graph_retrieve", _graph_retrieve_node)
     graph.add_node("grade_documents", _grade_node)
     graph.add_node("generate", _generate_node)
     graph.add_edge(START, "retrieve")
-    graph.add_edge("retrieve", "grade_documents")
+    graph.add_edge("retrieve", "graph_retrieve")
+    graph.add_edge("graph_retrieve", "grade_documents")
     graph.add_edge("grade_documents", "generate")
     graph.add_edge("generate", END)
     return graph.compile()
@@ -254,6 +315,7 @@ async def run_rag_trace(
         "chat_history": chat_history or [],
         "namespace": namespace,
         "session_id": session_id,
+        "graph_context": [],
     }
     final = await _graph().ainvoke(initial)
     retrieved = final.get("retrieved_docs") or []
